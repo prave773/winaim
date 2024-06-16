@@ -1,0 +1,299 @@
+//Backend
+//Database 
+CREATE TABLE departments (
+    department_id SERIAL PRIMARY KEY,
+    department_name VARCHAR(100) NOT NULL
+);
+CREATE TABLE roles (
+    role_id SERIAL PRIMARY KEY,
+    role_name VARCHAR(100) NOT NULL
+);
+CREATE TABLE employees (
+    employee_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    department_id INT REFERENCES departments(department_id),
+    role_id INT REFERENCES roles(role_id),
+    hire_date DATE NOT NULL
+);
+CREATE TABLE performance_reviews (
+    review_id SERIAL PRIMARY KEY,
+    employee_id INT REFERENCES employees(employee_id),
+    review TEXT,
+    score INT,
+    review_date DATE NOT NULL
+);
+
+
+//Models
+// department.js
+module.exports = (sequelize, DataTypes) => {
+  const Department = sequelize.define('Department', {
+    department_id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    department_name: {
+      type: DataTypes.STRING,
+      allowNull: false
+    }
+  });
+  Department.associate = (models) => {
+    Department.hasMany(models.Employee, { foreignKey: 'department_id' });
+  };
+  return Department;
+};
+
+// role.js
+module.exports = (sequelize, DataTypes) => {
+  const Role = sequelize.define('Role', {
+    role_id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    role_name: {
+      type: DataTypes.STRING,
+      allowNull: false
+    }
+  });
+  Role.associate = (models) => {
+    Role.hasMany(models.Employee, { foreignKey: 'role_id' });
+  };
+  return Role;
+};
+
+// employee.js
+module.exports = (sequelize, DataTypes) => {
+  const Employee = sequelize.define('Employee', {
+    employee_id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    first_name: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    last_name: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    email: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true
+    },
+    password: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    department_id: {
+      type: DataTypes.INTEGER,
+      references: {
+        model: 'Departments',
+        key: 'department_id'
+      }
+    },
+    role_id: {
+      type: DataTypes.INTEGER,
+      references: {
+        model: 'Roles',
+        key: 'role_id'
+      }
+    },
+    hire_date: {
+      type: DataTypes.DATE,
+      allowNull: false
+    }
+  });
+  Employee.associate = (models) => {
+    Employee.belongsTo(models.Department, { foreignKey: 'department_id' });
+    Employee.belongsTo(models.Role, { foreignKey: 'role_id' });
+  };
+  return Employee;
+};
+
+// performanceReview.js
+module.exports = (sequelize, DataTypes) => {
+  const PerformanceReview = sequelize.define('PerformanceReview', {
+    review_id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    employee_id: {
+      type: DataTypes.INTEGER,
+      references: {
+        model: 'Employees',
+        key: 'employee_id'
+      }
+    },
+    review: {
+      type: DataTypes.TEXT,
+      allowNull: false
+    },
+    score: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
+    review_date: {
+      type: DataTypes.DATE,
+      allowNull: false
+    }
+  });
+  PerformanceReview.associate = (models) => {
+    PerformanceReview.belongsTo(models.Employee, { foreignKey: 'employee_id' });
+  };
+  return PerformanceReview;
+};
+ 
+// routes/employee.js
+const express = require('express');
+const router = express.Router();
+const pool = require('../db');
+
+// Get all employees
+router.get('/', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM employees');
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Add a new employee
+router.post('/', async (req, res) => {
+    const { first_name, last_name, email, phone_number, hire_date, department_id, role_id } = req.body;
+    try {
+        const result = await pool.query(
+            'INSERT INTO employees (first_name, last_name, email, phone_number, hire_date, department_id, role_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [first_name, last_name, email, phone_number, hire_date, department_id, role_id]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Other routes for update, delete, etc.
+
+module.exports = router;
+
+
+
+//API
+// server.js
+const express = require('express');
+const bodyParser = require('body-parser');
+const db = require('./models');
+const employeeRoutes = require('./routes/employee');
+const departmentRoutes = require('./routes/department');
+const roleRoutes = require('./routes/role');
+const reviewRoutes = require('./routes/review');
+
+const app = express();
+app.use(bodyParser.json());
+
+app.use('/employees', employeeRoutes);
+app.use('/departments', departmentRoutes);
+app.use('/roles', roleRoutes);
+app.use('/reviews', reviewRoutes);
+
+db.sequelize.sync().then(() => {
+  app.listen(3000, () => {
+    console.log('Server is running on port 3000');
+  });
+});
+
+//Frontend
+// src/components/EmployeeList.js
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+
+const EmployeeList = () => {
+    const [employees, setEmployees] = useState([]);
+
+    useEffect(() => {
+        axios.get('/api/employees')
+            .then(response => setEmployees(response.data))
+            .catch(error => console.error(error));
+    }, []);
+
+    return (
+        <div>
+            <h1>Employees</h1>
+            <ul>
+                {employees.map(employee => (
+                    <li key={employee.employee_id}>
+                        {employee.first_name} {employee.last_name}
+                        {/* Add Edit and Delete buttons here */}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+};
+
+export default EmployeeList;
+
+//src/App.js
+import React from 'react';
+import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';
+import EmployeeList from './components/EmployeeList';
+
+const App = () => {
+    return (
+        <Router>
+            <Switch>
+                <Route path="/employees" component={EmployeeList} />
+                {/* Add other routes here */}
+            </Switch>
+        </Router>
+    );
+};
+
+export default App;
+
+
+//middleware/rbac.js
+const rbacMiddleware = (roles) => {
+    return (req, res, next) => {
+        const userRole = req.user.role; // Assume req.user is set after authentication
+        if (roles.includes(userRole)) {
+            next();
+        } else {
+            res.status(403).send('Forbidden');
+        }
+    };
+};
+
+module.exports = rbacMiddleware;
+
+//src/components/ProtectedRoute.js
+import React from 'react';
+import { Route, Redirect } from 'react-router-dom';
+
+const ProtectedRoute = ({ component: Component, roles, ...rest }) => {
+    const currentUser = /* logic to get current user from context or state */;
+
+    return (
+        <Route
+            {...rest}
+            render={props =>
+                currentUser && roles.includes(currentUser.role) ? (
+                    <Component {...props} />
+                ) : (
+                    <Redirect to="/login" />
+                )
+            }
+        />
+    );
+};
+
+export default ProtectedRoute;
+
+
